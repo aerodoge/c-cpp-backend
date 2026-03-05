@@ -1,0 +1,11 @@
+.vscode
+.idea
+
+.claude
+
+a.out
+*.o
+
+#bin
+tcp-server
+poll-server
