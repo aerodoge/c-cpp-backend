@@ -1,5 +1,24 @@
 CC=gcc
 
+all: tcp_server select_server poll_server epoll_server reactor multi_reactor
+
+tcp_server: tcp_server.c
+	$(CC) -o $@ $^ -lpthread
+
+select_server: select_server.c
+	$(CC) -o $@ $^
+
+poll_server: poll_server.c
+	$(CC) -o $@ $^
+
+epoll_server: epoll_server.c
+	$(CC) -o $@ $^
+
+reactor: reactor.c
+	$(CC) -o $@ $^
+
+multi_reactor: multi_reactor.c
+	$(CC) -o $@ $^ -lpthread
 
 tcp-server: tcp-server.o
 	$(CC) -o $@ $^
