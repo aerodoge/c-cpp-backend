@@ -15,8 +15,10 @@ typedef int(*CALLBACK)(int fd);
 
 struct conn_item{
     int fd;
-    char buffer[BUFFER_LENGTH];
-    int idx;
+    char rbuffer[BUFFER_LENGTH];
+    int rlen;
+    char wbuffer[BUFFER_LENGTH];
+    int wlen;
     union {
         CALLBACK accept_callback;
         CALLBACK recv_callback;
@@ -66,8 +68,10 @@ int accept_cb(int fd)
     set_event(clientfd, EPOLLIN, 1);
 
     connlist[clientfd].fd = clientfd;
-    memset(connlist[clientfd].buffer, 0, BUFFER_LENGTH);
-    connlist[clientfd].idx = 0;
+    memset(connlist[clientfd].rbuffer, 0, BUFFER_LENGTH);
+    memset(connlist[clientfd].wbuffer, 0, BUFFER_LENGTH);
+    connlist[clientfd].rlen = 0;
+    connlist[clientfd].wlen = 0;
     connlist[clientfd].recv_t.recv_callback = recv_cb;
     connlist[clientfd].send_callback = send_cb;
 
@@ -77,8 +81,8 @@ int accept_cb(int fd)
 // clientfd触发EPOLLIN事件时执行recv_cb
 int recv_cb(int fd) 
 {
-    char* buffer = connlist[fd].buffer;
-    int idx = connlist[fd].idx;
+    char* buffer = connlist[fd].rbuffer;
+    int idx = connlist[fd].rlen;
 
     int count = recv(fd, buffer+idx, BUFFER_LENGTH-idx, 0);
     if (count == 0)
@@ -88,7 +92,13 @@ int recv_cb(int fd)
         printf("client %d disconnected.\n", fd);
         return -1;
     }
-    connlist[fd].idx += count;
+    connlist[fd].rlen += count;
+
+    // memcpy(connlist[fd].wbuffer, connlist[fd].rbuffer, connlist[fd].rlen);
+    // connlist[fd].wlen = connlist[fd].rlen;
+
+    http_request(&connlist[fd]);
+    http_response(&connlist[fd]);
 
     // 修改事件
     set_event(fd, EPOLLOUT, 0);
@@ -99,8 +109,8 @@ int recv_cb(int fd)
 // clientfd触发EPOLLOUT事件时执行send_cb
 int send_cb(int fd) 
 {
-    char* buffer = connlist[fd].buffer;
-    int idx = connlist[fd].idx;
+    char* buffer = connlist[fd].wbuffer;
+    int idx = connlist[fd].wlen;
     int count = send(fd, buffer, idx, 0);
 
     // 修改事件
@@ -158,13 +168,13 @@ int main()
             int connfd = events[i].data.fd; 
             if (events[i].events & EPOLLIN) 
             {
+                printf("recv <----: %s\n", connlist[connfd].rbuffer);
                 int count = connlist[connfd].recv_t.recv_callback(connfd);
-                printf("recv <----: %s\n", connlist[connfd].buffer);
             } 
             else if (events[i].events & EPOLLOUT)
             {
+                printf("send ---->: %s\n", connlist[connfd].wbuffer);
                 int count = connlist[connfd].send_callback(connfd);
-                printf("send ---->: %s\n", connlist[connfd].buffer);
             }
         }
     }
