@@ -17,48 +17,48 @@
 /*
  * 回调函数类型定义
  *
- * Reactor 的核心机制：用函数指针将"事件"与"处理逻辑"解耦。
+ * Reactor的核心机制：用函数指针将"事件"与"处理逻辑"解耦。
  * 主循环不需要知道"该做什么"，只负责查表调用对应的回调函数。
  *
- * 参数 fd：触发事件的文件描述符
- * 返回值：操作结果（-1 表示失败/连接关闭）
+ * 参数fd：触发事件的文件描述符
+ * 返回值：操作结果（-1表示失败/连接关闭）
  */
 typedef int(*CALLBACK)(int fd);
 
 
 /*
- * 连接项：描述一个 fd 的完整上下文
+ * 连接项：描述一个fd的完整上下文
  *
- * Reactor 的精髓在于：每个 fd 不仅仅是一个整数，
- * 它携带了自己的缓冲区和回调函数，是一个完整的"状态机节点"。
+ * Reactor的精髓在于：每个fd不仅仅是一个整数，它携带了自己的缓冲区和回调函数，是一个完整的"状态机节点"。
+ * 
  */
 struct conn_item {
     int fd;                      // 文件描述符
 
-    char rbuffer[BUFFER_LENGTH]; // 读缓冲区：存储从 fd 收到的数据
+    char rbuffer[BUFFER_LENGTH]; // 读缓冲区：存储从fd收到的数据
     int  rlen;                   // 读缓冲区当前已使用的字节数
 
     char wbuffer[BUFFER_LENGTH]; // 写缓冲区：存储待发送给客户端的数据
     int  wlen;                   // 写缓冲区中待发送的字节数
 
-    char resource[BUFFER_LENGTH]; // 请求的资源路径（HTTP 场景下使用）
+    char resource[BUFFER_LENGTH]; // 请求的资源路径（HTTP场景下使用）
 
     /*
-     * 使用 union 节省内存：
+     * 使用union节省内存：
      *
-     * listenfd  只需要 accept_callback（接受新连接）
-     * clientfd  只需要 recv_callback  （读取数据）
+     * listenfd只需要accept_callback（接受新连接）
+     * clientfd只需要recv_callback（读取数据）
      *
-     * 两种 fd 不会同时使用同一个字段，union 让它们共享同一块内存。
-     * 通过绑定不同的函数指针，主循环无需区分 fd 的类型，
-     * 统一调用 recv_t.recv_callback(fd) 即可。
+     * 两种fd不会同时使用同一个字段，union让它们共享同一块内存。
+     * 通过绑定不同的函数指针，主循环无需区分fd的类型，统一调用recv_t.recv_callback(fd) 即可。
+     * 
      */
     union {
-        CALLBACK accept_callback; // listenfd 使用：新连接到来时调用
-        CALLBACK recv_callback;   // clientfd 使用：数据可读时调用
+        CALLBACK accept_callback; // listenfd使用：新连接到来时调用
+        CALLBACK recv_callback;   // clientfd使用：数据可读时调用
     } recv_t;
 
-    CALLBACK send_callback;       // clientfd 使用：数据可写时调用
+    CALLBACK send_callback;       // clientfd使用：数据可写时调用
 };
 
 #if ENABLE_HTTP_RESPONSE
@@ -67,25 +67,25 @@ typedef struct conn_item connection_t;
 
 int http_request(connection_t* conn)
 {
-    // 解析 HTTP 请求（暂未实现，预留接口）
+    // 解析HTTP请求（暂未实现，预留接口）
     return 0;
 }
 
 int http_response(connection_t* conn)
 {
 #if 0
-    // 方式一：硬编码 HTTP 响应报文（调试用）
+    // 方式一：硬编码HTTP响应报文（调试用）
     conn->wlen = sprintf(conn->wbuffer, "HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nContent-Length: 73\r\nContent-Type: text/html\r\nDate: Sat 06 Aug 2026 12:16:46 GMT\r\n\r\n<html><head><title>cdd</title></head><body><h1>cdd</h1></body></html>\r\n\r\n");
     conn->wbuffer;
     return conn->wlen;
 #else
-    // 方式二：从文件读取 HTTP 响应体
-    // 先用 fstat 获取文件大小，填入 Content-Length 头
+    // 方式二：从文件读取HTTP响应体
+    // 先用fstat获取文件大小，填入Content-Length头
     int filefd = open("index.html", O_RDONLY);
     struct stat stat_buf;
     fstat(filefd, &stat_buf);
 
-    // 先将 HTTP 响应头写入 wbuffer，记录头部占用的字节数
+    // 先将HTTP响应头写入 wbuffer，记录头部占用的字节数
     conn->wlen = sprintf(conn->wbuffer,
         "HTTP/1.1 200 OK\r\n"
         "Accept-Ranges: bytes\r\n"
@@ -94,7 +94,7 @@ int http_response(connection_t* conn)
         "Date: Sat 06 Aug 2026 12:16:46 GMT\r\n\r\n",
         stat_buf.st_size);
 
-    // 紧接着头部，将文件内容读入 wbuffer 的剩余空间
+    // 紧接着头部，将文件内容读入wbuffer的剩余空间
     int count = read(filefd, conn->wbuffer + conn->wlen, BUFFER_LENGTH - conn->wlen);
     conn->wlen += count;
 #endif
@@ -104,22 +104,21 @@ int http_response(connection_t* conn)
 
 
 /*
- * 全局连接表：以 fd 值为下标的数组
+ * 全局连接表：以fd值为下标的数组
  *
- * Linux 内核分配 fd 时从小整数递增，因此可以直接用 fd 做数组下标，
- * 实现 O(1) 的连接查找，无需哈希表或链表。
- *
- * connlist[fd] 就是该 fd 对应的全部上下文（缓冲区 + 回调）。
+ * Linux内核分配fd时从小整数递增，因此可以直接用fd做数组下标，实现O(1)的连接查找，无需哈希表或链表。
+ * 
+ * connlist[fd]就是该fd对应的全部上下文（缓冲区 + 回调）。
  */
 struct conn_item connlist[1024] = {0};
 
 /*
- * Reactor 结构体：对事件循环核心资源的封装
+ * Reactor结构体：对事件循环核心资源的封装
  *
- * epfd      ：epoll 实例，内核在此维护监听集合（红黑树）和就绪队列
- * conn_list ：指向连接表的指针，与 connlist 全局数组配合使用
+ * epfd      ：epoll实例，内核在此维护监听集合（红黑树）和就绪队列
+ * conn_list ：指向连接表的指针，与connlist全局数组配合使用
  *
- * 将 epfd 和 conn_list 放在一起，便于将来封装成多 Reactor 实例
+ * 将epfd和conn_list 放在一起，便于将来封装成多Reactor实例
  * （参见 multi_reactor.c 的实现）。
  */
 struct reactor {
@@ -127,61 +126,61 @@ struct reactor {
     struct conn_item *conn_list;
 };
 
-// 全局 epfd，供回调函数直接使用（单 Reactor 场景下的简化做法）
+// 全局epfd，供回调函数直接使用（单Reactor场景下的简化做法）
 int epfd;
 
 /*
- * set_event：向 epoll 注册或修改 fd 的监听事件
+ * set_event：向epoll注册或修改fd的监听事件
  *
  * fd    ：目标文件描述符
- * event ：监听的事件类型，如 EPOLLIN（可读）、EPOLLOUT（可写）
+ * event ：监听的事件类型，如EPOLLIN（可读）、EPOLLOUT（可写）
  * flag  ：1 = ADD（新增），0 = MOD（修改已存在的 fd）
  *
- * ADD 和 MOD 的区别：
- *   EPOLL_CTL_ADD：fd 首次加入 epoll，内核在红黑树中插入新节点
- *   EPOLL_CTL_MOD：fd 已在 epoll 中，只修改监听的事件类型
- *   对未注册的 fd 执行 MOD，或对已注册的 fd 执行 ADD，都会报错。
+ * ADD和MOD的区别：
+ *   EPOLL_CTL_ADD：fd首次加入epoll，内核在红黑树中插入新节点
+ *   EPOLL_CTL_MOD：fd已在epoll中，只修改监听的事件类型
+ *   对未注册的fd执行MOD，或对已注册的fd执行ADD，都会报错。
  *
- * 在 recv_cb 和 send_cb 中交替调用 set_event(EPOLLOUT) 和
- * set_event(EPOLLIN)，驱动"读 → 写 → 读"的状态机流转。
+ * 在recv_cb和send_cb中交替调用set_event(EPOLLOUT) 和set_event(EPOLLIN)，驱动"读 → 写 → 读"的状态机流转。
+ * 
  */
 int set_event(int fd, int event, int flag)
 {
     struct epoll_event ev;
     ev.events  = event;  // 要监听的事件
-    ev.data.fd = fd;     // 事件触发时，通过 ev.data.fd 取回是哪个 fd
+    ev.data.fd = fd;     // 事件触发时，通过ev.data.fd取回是哪个fd
     if (flag)
-        epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev); // 新 fd，加入监听
+        epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev); // 新fd，加入监听
     else
-        epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev); // 已有 fd，修改事件类型
+        epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev); // 已有fd，修改事件类型
 }
 
-// 前向声明，accept_cb 内部需要引用
+// 前向声明，accept_cb内部需要引用
 int recv_cb(int fd);
 int send_cb(int fd);
 
 /*
- * accept_cb：处理新连接（listenfd 触发 EPOLLIN 时调用）
+ * accept_cb：处理新连接（listenfd触发EPOLLIN时调用）
  *
  * 职责：
- *   1. 从 listenfd 的 accept 队列取出一个新连接，得到 clientfd
- *   2. 将 clientfd 注册到 epoll，监听 EPOLLIN（等待客户端发数据）
- *   3. 初始化 connlist[clientfd]，绑定读写回调
+ *   1. 从listenfd的accept队列取出一个新连接，得到clientfd
+ *   2. 将clientfd注册到epoll，监听EPOLLIN（等待客户端发数据）
+ *   3. 初始化connlist[clientfd]，绑定读写回调
  *
- * 完成后，主循环就能通过 connlist[clientfd] 路由到正确的回调，
- * 不再需要任何 if/else 来区分 fd 类型。
+ * 完成后，主循环就能通过connlist[clientfd]路由到正确的回调，不再需要任何if/else来区分fd类型。
+ * 
  */
 int accept_cb(int fd)
 {
     struct sockaddr_in client_addr;
     socklen_t len = sizeof(client_addr);
 
-    // accept 从完成队列取出一个已完成三次握手的连接
+    // accept从完成队列取出一个已完成三次握手的连接
     int clientfd = accept(fd, (struct sockaddr*)&client_addr, &len);
     if (clientfd < 0)
         return -1;
 
-    // 新 fd 加入 epoll，监听读事件，等待客户端发来请求
+    // 新fd加入epoll，监听读事件，等待客户端发来请求
     set_event(clientfd, EPOLLIN, 1); // flag=1: EPOLL_CTL_ADD
 
     // 初始化连接项，清空缓冲区，绑定回调函数
@@ -191,7 +190,7 @@ int accept_cb(int fd)
     memset(connlist[clientfd].rbuffer, 0, BUFFER_LENGTH);
     memset(connlist[clientfd].wbuffer, 0, BUFFER_LENGTH);
 
-    // 绑定回调：后续 clientfd 的读写事件由 recv_cb/send_cb 处理
+    // 绑定回调：后续 clientfd的读写事件由recv_cb/send_cb处理
     connlist[clientfd].recv_t.recv_callback = recv_cb;
     connlist[clientfd].send_callback        = send_cb;
 
@@ -199,15 +198,15 @@ int accept_cb(int fd)
 }
 
 /*
- * recv_cb：读取客户端数据（clientfd 触发 EPOLLIN 时调用）
+ * recv_cb：读取客户端数据（clientfd触发EPOLLIN时调用）
  *
  * 职责：
- *   1. 从 fd 读数据到 rbuffer
- *   2. 调用 http_request/http_response 构造响应，填入 wbuffer
- *   3. 将监听事件从 EPOLLIN 切换为 EPOLLOUT，触发 send_cb
+ *   1. 从fd读数据到rbuffer
+ *   2. 调用http_request/http_response构造响应，填入wbuffer
+ *   3. 将监听事件从EPOLLIN切换为EPOLLOUT，触发send_cb
  *
- * 关键：recv 返回 0 表示对端关闭了连接（发送了 TCP FIN），
- * 此时必须从 epoll 删除 fd 并 close，否则会持续触发 EPOLLIN。
+ * 关键：recv返回0表示对端关闭了连接（发送了TCP FIN），此时必须从epoll删除fd并close，否则会持续触发EPOLLIN。
+ * 
  */
 int recv_cb(int fd)
 {
@@ -216,7 +215,7 @@ int recv_cb(int fd)
 
     int count = recv(fd, buffer + idx, BUFFER_LENGTH - idx, 0);
     if (count == 0) {
-        // 对端关闭连接：从 epoll 删除，关闭 fd
+        // 对端关闭连接：从epoll删除，关闭fd
         epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
         close(fd);
         printf("client %d disconnected.\n", fd);
@@ -225,18 +224,18 @@ int recv_cb(int fd)
     connlist[fd].rlen += count;
 
     /*
-     * 注释掉的 echo 逻辑（直接回显）：
+     * 注释掉的echo逻辑（直接回显）：
      *   memcpy(connlist[fd].wbuffer, connlist[fd].rbuffer, connlist[fd].rlen);
      *   connlist[fd].wlen = connlist[fd].rlen;
-     * 现在改为构造 HTTP 响应：
+     * 现在改为构造HTTP响应：
      */
     http_request(&connlist[fd]);   // 解析请求（当前为空实现）
-    http_response(&connlist[fd]);  // 构造 HTTP 响应，填入 wbuffer
+    http_response(&connlist[fd]);  // 构造HTTP响应，填入wbuffer
 
     /*
      * 读完后切换为监听写事件：
-     * 下次 epoll_wait 返回 EPOLLOUT 时，调用 send_cb 将 wbuffer 发出去。
-     * flag=0: EPOLL_CTL_MOD（clientfd 已在 epoll 中，只改事件类型）
+     * 下次epoll_wait返回EPOLLOUT时，调用send_cb将wbuffer发出去。
+     * flag=0: EPOLL_CTL_MOD（clientfd已在epoll中，只改事件类型）
      */
     set_event(fd, EPOLLOUT, 0);
 
@@ -248,11 +247,11 @@ int recv_cb(int fd)
  *
  * 职责：
  *   1. 将 wbuffer 中的数据发送给客户端
- *   2. 将监听事件切回 EPOLLIN，等待客户端的下一条请求
+ *   2. 将监听事件切回EPOLLIN，等待客户端的下一条请求
  *
- * EPOLLOUT 的触发时机：fd 的内核发送缓冲区有空间可写。
- * 注意：不能一直监听 EPOLLOUT，否则只要缓冲区不满就会持续触发，
- * 浪费 CPU。正确做法是：有数据要发时才切换到 EPOLLOUT，发完立即切回 EPOLLIN。
+ * EPOLLOUT 的触发时机：fd的内核发送缓冲区有空间可写。
+ * 注意：不能一直监听EPOLLOUT，否则只要缓冲区不满就会持续触发，浪费CPU。
+ * 正确做法是：有数据要发时才切换到EPOLLOUT，发完立即切回EPOLLIN。
  */
 int send_cb(int fd)
 {
@@ -281,7 +280,7 @@ int main()
     server_addr.sin_port        = htons(2048);
 
     int opt = 1;
-    // SO_REUSEADDR：允许服务器重启后立即复用处于 TIME_WAIT 状态的端口
+    // SO_REUSEADDR：允许服务器重启后立即复用处于TIME_WAIT状态的端口
     if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt))) {
         perror("setsockopt failed");
         close(sockfd);
@@ -293,33 +292,33 @@ int main()
         return -1;
     }
 
-    // backlog=10：内核 accept 队列最多容纳 10 个已完成握手的连接
+    // backlog=10：内核accept队列最多容纳10个已完成握手的连接
     listen(sockfd, 10);
 
     // ── 初始化 Reactor ───────────────────────────────────────────────
 
-    // 将 listenfd 纳入连接表，绑定 accept_cb
-    // 这样主循环就能统一处理所有 fd，无需特判 "if fd == listenfd"
+    // 将listenfd纳入连接表，绑定accept_cb
+    // 这样主循环就能统一处理所有fd，无需特判"if fd == listenfd"
     connlist[sockfd].fd = sockfd;
     connlist[sockfd].recv_t.accept_callback = accept_cb;
 
-    // EPOLL_CLOEXEC：子进程 exec 时自动关闭 epfd，防止 fd 泄漏
+    // EPOLL_CLOEXEC：子进程exec时自动关闭epfd，防止fd泄漏
     epfd = epoll_create1(EPOLL_CLOEXEC);
     if (epfd == 1) {
         perror("epoll_create1");
         return -1;
     }
 
-    // 将 listenfd 注册到 epoll，监听 EPOLLIN（新连接到来）
+    // 将listenfd注册到epoll，监听EPOLLIN（新连接到来）
     set_event(sockfd, EPOLLIN, 1); // flag=1: EPOLL_CTL_ADD
 
     // ── 事件循环（Dispatcher）────────────────────────────────────────
     //
     // 主循环的唯一职责：等待事件 → 查表 → 调用回调。
-    // 不包含任何业务逻辑，所有处理都委托给绑定在 conn_item 上的回调函数。
+    // 不包含任何业务逻辑，所有处理都委托给绑定在conn_item上的回调函数。
     struct epoll_event events[1024] = {0};
     while (1) {
-        // epoll_wait 阻塞直到有 fd 就绪，返回就绪数量 nready
+        // epoll_wait 阻塞直到有fd就绪，返回就绪数量nready
         // timeout=-1 表示永久阻塞，直到有事件发生
         int nready = epoll_wait(epfd, events, 1024, -1);
 
