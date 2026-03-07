@@ -2,12 +2,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <time.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/epoll.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
+#define ENABLE_HTTP_RESPONSE 1
 #define BUFFER_LENGTH 1024
 
 typedef int(*CALLBACK)(int fd);
@@ -19,6 +23,8 @@ struct conn_item{
     int rlen;
     char wbuffer[BUFFER_LENGTH];
     int wlen;
+    char resource[BUFFER_LENGTH];
+
     union {
         CALLBACK accept_callback;
         CALLBACK recv_callback;
@@ -26,6 +32,37 @@ struct conn_item{
 
     CALLBACK send_callback;
 };
+
+#if ENABLE_HTTP_RESPONSE
+#define ROOT_DIR "/home/blockinjector/c-cpp"
+typedef struct conn_item connection_t;
+
+int http_request(connection_t* conn)
+{
+
+    return 0;
+}
+
+int http_response(connection_t* conn)
+{
+#if 0
+    conn->wlen = sprintf(conn->wbuffer, "HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nContent-Length: 73\r\nContent-Type: text/html\r\nDate: Sat 06 Aug 2026 12:16:46 GMT\r\n\r\n<html><head><title>cdd</title></head><body><h1>cdd</h1></body></html>\r\n\r\n");
+    conn->wbuffer;
+    return conn->wlen;
+#else
+    int filefd = open("index.html", O_RDONLY);
+    struct stat stat_buf;
+    fstat(filefd,&stat_buf);
+
+    conn->wlen = sprintf(conn->wbuffer, "HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nContent-Length: %ld\r\nContent-Type: text/html\r\nDate: Sat 06 Aug 2026 12:16:46 GMT\r\n\r\n", stat_buf.st_size);
+    int count = read(filefd, conn->wbuffer+conn->wlen, BUFFER_LENGTH-conn->wlen);
+    conn->wlen += count;
+#endif
+}
+
+#endif
+
+
 
 struct conn_item connlist[1024] = {0};
 struct reactor
