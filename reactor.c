@@ -10,6 +10,7 @@
 #include <sys/epoll.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/sendfile.h>
 
 #define ENABLE_HTTP_RESPONSE 1
 #define BUFFER_LENGTH 1024
@@ -75,7 +76,7 @@ int http_response(connection_t* conn)
 {
 #if 0
     // 方式一：硬编码HTTP响应报文（调试用）
-    conn->wlen = sprintf(conn->wbuffer, "HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nContent-Length: 73\r\nContent-Type: text/html\r\nDate: Sat 06 Aug 2026 12:16:46 GMT\r\n\r\n<html><head><title>cdd</title></head><body><h1>cdd</h1></body></html>\r\n\r\n");
+    conn->wlen = sprintf(conn->wbuffer, "HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nContent-Length: 77\r\nContent-Type: text/html\r\nDate: Sat 06 Aug 2026 12:16:46 GMT\r\n\r\n<html><head><title>cdd</title></head><body><h1>cdd</h1></body></html>\r\n\r\n");
     conn->wbuffer;
     return conn->wlen;
 #else
@@ -243,13 +244,13 @@ int recv_cb(int fd)
 }
 
 /*
- * send_cb：发送响应数据（clientfd 触发 EPOLLOUT 时调用）
+ * send_cb：发送响应数据（clientfd触发EPOLLOUT时调用）
  *
  * 职责：
- *   1. 将 wbuffer 中的数据发送给客户端
+ *   1. 将wbuffer中的数据发送给客户端
  *   2. 将监听事件切回EPOLLIN，等待客户端的下一条请求
  *
- * EPOLLOUT 的触发时机：fd的内核发送缓冲区有空间可写。
+ * EPOLLOUT的触发时机：fd的内核发送缓冲区有空间可写。
  * 注意：不能一直监听EPOLLOUT，否则只要缓冲区不满就会持续触发，浪费CPU。
  * 正确做法是：有数据要发时才切换到EPOLLOUT，发完立即切回EPOLLIN。
  */
