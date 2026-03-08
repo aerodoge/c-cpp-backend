@@ -63,7 +63,9 @@ struct conn_item {
 };
 
 #if ENABLE_HTTP_RESPONSE
-#define ROOT_DIR "/home/blockinjector/c-cpp"
+
+#define ROOT_DIR "/home/blockinjector/c-cpp/resource"
+
 typedef struct conn_item connection_t;
 
 int http_request(connection_t* conn)
@@ -82,7 +84,7 @@ int http_response(connection_t* conn)
 #else
     // 方式二：从文件读取HTTP响应体
     // 先用fstat获取文件大小，填入Content-Length头
-    int filefd = open("index.html", O_RDONLY);
+    int filefd = open("resource/index.html", O_RDONLY);
     struct stat stat_buf;
     fstat(filefd, &stat_buf);
 
