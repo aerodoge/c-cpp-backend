@@ -76,11 +76,10 @@ int http_request(connection_t* conn)
 
 int http_response(connection_t* conn)
 {
-#if 0
+#if 1
     // 方式一：硬编码HTTP响应报文（调试用）
-    conn->wlen = sprintf(conn->wbuffer, "HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nContent-Length: 77\r\nContent-Type: text/html\r\nDate: Sat 06 Aug 2026 12:16:46 GMT\r\n\r\n<html><head><title>cdd</title></head><body><h1>cdd</h1></body></html>\r\n\r\n");
-    conn->wbuffer;
-    return conn->wlen;
+    // 响应体就是纯HTML内容
+    conn->wlen = sprintf(conn->wbuffer, "HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nContent-Length: 69\r\nContent-Type: text/html\r\nDate: Sat 06 Aug 2026 12:16:46 GMT\r\n\r\n<html><head><title>cdd</title></head><body><h1>cdd</h1></body></html>");
 #else
     // 方式二：从文件读取HTTP响应体
     // 先用fstat获取文件大小，填入Content-Length头
@@ -101,6 +100,7 @@ int http_response(connection_t* conn)
     int count = read(filefd, conn->wbuffer + conn->wlen, BUFFER_LENGTH - conn->wlen);
     conn->wlen += count;
 #endif
+    return conn->wlen;
 }
 
 #endif
@@ -221,7 +221,7 @@ int recv_cb(int fd)
         // 对端关闭连接：从epoll删除，关闭fd
         epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
         close(fd);
-        printf("client %d disconnected.\n", fd);
+        //printf("client %d disconnected.\n", fd);
         return -1;
     }
     connlist[fd].rlen += count;
@@ -307,7 +307,7 @@ int main()
 
     // EPOLL_CLOEXEC：子进程exec时自动关闭epfd，防止fd泄漏
     epfd = epoll_create1(EPOLL_CLOEXEC);
-    if (epfd == 1) {
+    if (epfd == -1) {
         perror("epoll_create1");
         return -1;
     }
@@ -333,12 +333,12 @@ int main()
                 // listenfd  → accept_cb（取新连接）
                 // clientfd  → recv_cb（读数据）
                 // 主循环无需知道是哪种，统一调用即可
-                printf("recv <----: %s\n", connlist[connfd].rbuffer);
+                //printf("recv <----: %s\n", connlist[connfd].rbuffer);
                 int count = connlist[connfd].recv_t.recv_callback(connfd);
             }
             else if (events[i].events & EPOLLOUT) {
                 // 可写事件：内核发送缓冲区有空间，可以发数据了
-                printf("send ---->: %s\n", connlist[connfd].wbuffer);
+                //printf("send ---->: %s\n", connlist[connfd].wbuffer);
                 int count = connlist[connfd].send_callback(connfd);
             }
         }
